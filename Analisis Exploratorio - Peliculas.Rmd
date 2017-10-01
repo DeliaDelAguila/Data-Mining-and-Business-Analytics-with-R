@@ -1,0 +1,259 @@
+---
+title: "Análisis Exploratorío Univariado - Movies"
+output: html_notebook
+---
+
+En este documento analizaremos 5mil películas obtenidas de https://www.kaggle.com/tmdb/tmdb-movie-metadata
+```{r include=FALSE, cache=FALSE}
+#Primero cargaremos todas la librería necesarias para correr nuestro script
+
+list.of.packages <- c("readr", "ggplot2", "dplyr","tibble","magrittr", "wordcloud", "tm")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library(readr)    # Leer nuestro csv, convirtiendolo a un tibble
+library(ggplot2)  # Generar gráficas bonitas
+library(dplyr)    # Manejo de Data Frames
+library(tibble)   # Manejo de tibbles
+library(magrittr) # Uso de pipes %>%
+library(wordcloud)# Nube de palabras
+
+```
+
+### Conociendo nuestro dataset y Limpieza
+Nuestro dataset inicia con 5,043 observacion y 28 variables. 
+Despues del proceso de limpieza nuestro dataset termina con 4,911 películas.
+```{r include=FALSE, cache=FALSE}
+# Cargamos los datos como tibble
+movies <- readr::read_csv("C:/Users/Delia/Documents/ITAM/Mineria de Datos/Datasets/movies.csv")
+
+# Nuestro dataset inicia con 5043 observaciones y 28 variables
+tibble::glimpse(movies)
+
+#Removemos filas duplicadas y nuestro dataset queda con 4,998 observaciones
+#pero notemos que solo tenemos 4,916 valores distintos en movie_title. 
+#Es decir que aún tenemos valores duplicados
+movies <- movies[!duplicated(movies), ]
+movies_nrow <- nrow(movies)
+n_movies <- length(levels(factor(movies$movie_title)))
+
+#Veamos que hay 79 películas repetidas, con alguna diferencia en una de sus 27 variables restantes.
+Duplicated_Movies <- function() {
+  duplicated_movies <- movies %>%
+    select(movie_title) %>%
+    count(movie_title) %>%
+    filter(n>1)
+  
+  return(duplicated_movies)
+  }
+duplicated_movies <- Duplicated_Movies()
+
+#Veamos en que variables se encuentran las dicrepancias
+#Notemos que 25 variables tienen alguna discrepancia dentro de las 79 películas duplicadas
+Aux_Duplicated <- function() {
+  
+  aux_duplicated <- as.data.frame(matrix(0, ncol = 28, nrow = nrow(duplicated_movies)))
+  colnames(aux_duplicated)<-colnames(movies)
+  for(j in 1:nrow(duplicated_movies)) { 
+    aux <- filter(movies, movie_title==duplicated_movies$movie_title[j])
+    for(i in 1:27) {
+      aux_duplicated[j,i] <- as.numeric(sum(duplicated(aux[,i])) < nrow(aux)-1) }}
+  aux_duplicated["total" ,] <- colSums(aux_duplicated)
+  aux_duplicated$movie_title_name <- c(duplicated_movies$movie_title,0)
+  
+  return(aux_duplicated)
+}
+Discrepancy_Var <- function() {
+  
+  aux_duplicated <- as.data.frame(matrix(0, ncol = 28, nrow = nrow(duplicated_movies)))
+  colnames(aux_duplicated)<-colnames(movies)
+  for(j in 1:nrow(duplicated_movies)) { 
+    aux <- filter(movies, movie_title==duplicated_movies$movie_title[j])
+    for(i in 1:27) {
+      aux_duplicated[j,i] <- as.numeric(sum(duplicated(aux[,i])) < nrow(aux)-1) }}
+  aux_duplicated["total" ,] <- colSums(aux_duplicated)
+  aux_duplicated$movie_title_name <- c(duplicated_movies$movie_title,0)
+  
+  var_discrepancy <- as.data.frame(t(aux_duplicated["total" ,])) 
+  var_discrepancy <- mutate(var_discrepancy,variable=rownames(var_discrepancy)) %>%
+    filter(total!=0) %>%
+    select(variable,total) %>%
+    arrange(desc(total))
+  
+  return(var_discrepancy)
+}
+
+aux_duplicated <- Aux_Duplicated()
+var_discrepancy <- Discrepancy_Var()
+
+#Cuando la variable con discrepancia es title_year, actor_1_name, actor_2_name y actor_3_name, 
+#diremos que se trata de un remake y no de un duplicado
+remakes <- aux_duplicated %>%
+  select(movie_title_name,title_year, actor_1_name, actor_2_name, actor_3_name) %>%
+  filter(title_year==1 & actor_1_name==1 & actor_2_name==1 & actor_2_name==1) %>%
+  select(movie_title=movie_title_name) %>%
+  merge(movies,by="movie_title",all.x = TRUE) %>%
+  select(movie_title,title_year,actor_1_name, actor_2_name, actor_3_name)
+
+#Bajo estas condiciones encontramos en nuestro dataset 3 remakes, los cuales serán omitidos del dataset principal
+movies <- filter(movies, !movie_title %in% remakes$movie_title)
+omited_movies <- select(remakes, movie_title, title_year) %>%
+  mutate(reason="remake")
+
+#Omitiendo los remakes, ahora tenemos 76 películas duplicadas
+duplicated_movies <- Duplicated_Movies()
+aux_duplicated <- Aux_Duplicated()
+var_discrepancy <- Discrepancy_Var()
+
+#Primero analizaremos las variables no numericas
+# actor_3_name, plot_keywords, imdb_score
+aux_duplicated %>%
+  select(movie_title_name,movie_title_name,actor_3_name, plot_keywords) %>%
+  filter(actor_3_name==1 | plot_keywords==1) 
+
+#Películas Resultantes:
+# Ben-Hur: Plot_keywords, un registro está como NA. 
+#   No se realizará ninguna acción sobre este registro por el momento, ya que otras variables tienen discrepancia
+# Brothers: actor_3_name es distinto para ambos registros.  
+#   Dado que ambos actores aparecieron en la película ambos regustros de esta película no serán tomados en cuenta
+omited_movies <- rbind(omited_movies, c("Brothers", 2009, "actor_3_name"))
+
+disc_actor3 <- aux_duplicated %>%
+  select(movie_title_name,title_year, actor_1_name, actor_2_name, actor_3_name) %>%
+  filter(actor_3_name==1) %>%
+  select(movie_title=movie_title_name) %>%
+  merge(movies,by="movie_title",all.x = TRUE) %>%
+  select(movie_title,title_year,actor_1_name, actor_2_name, actor_3_name)
+movies <- filter(movies, !movie_title %in% disc_actor3$movie_title)
+
+#75 películas duplicadas
+duplicated_movies <- Duplicated_Movies()
+aux_duplicated <- Aux_Duplicated()
+var_discrepancy <- Discrepancy_Var()
+
+
+#Analizaremos las variables numericas
+# num_voted_users, actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes
+#cast_total_facebook_likes, num_user_for_reviews, budget, imdb_score
+
+numeric_var_adj <- movies %>%
+  select(movie_title,num_voted_users, actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes,cast_total_facebook_likes, num_user_for_reviews, budget, imdb_score) %>%
+  merge(select(aux_duplicated, movie_title=movie_title_name, num_voted_users, actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes,cast_total_facebook_likes, num_user_for_reviews, budget, imdb_score) %>%
+          filter(num_voted_users!=0 | actor_1_facebook_likes!=0 | actor_2_facebook_likes!=0 | actor_3_facebook_likes!=0 | cast_total_facebook_likes!=0 | num_user_for_reviews!=0 | budget!=0 | imdb_score!=0), by="movie_title", all.y = TRUE) %>%
+  select(movie_title, num_voted_users=num_voted_users.x, actor_1_facebook_likes=actor_1_facebook_likes.x, actor_2_facebook_likes=actor_2_facebook_likes.x, actor_3_facebook_likes=actor_3_facebook_likes.x, cast_total_facebook_likes=cast_total_facebook_likes.x, num_user_for_reviews=num_user_for_reviews.x, budget=budget.x, imdb_score=imdb_score.x) %>%
+  group_by(movie_title) %>%
+  dplyr::summarise(min_vu=min(num_voted_users,na.rm = TRUE),max_vu=max(num_voted_users),min_1=min(actor_1_facebook_likes,na.rm = TRUE), max_1=max(actor_1_facebook_likes),min_2=min(actor_2_facebook_likes,na.rm = TRUE), max_2=max(actor_2_facebook_likes),min_3=min(actor_3_facebook_likes,na.rm = TRUE), max_3=max(actor_3_facebook_likes), min_fb_all=min(cast_total_facebook_likes,na.rm = TRUE), max_fb_all=max(cast_total_facebook_likes),min_ru=min(num_user_for_reviews,na.rm = TRUE),max_ru=max(num_user_for_reviews),min_budget=min(budget,na.rm = TRUE),max_budget=max(budget),min_score=min(imdb_score,na.rm = TRUE),max_score=max(imdb_score)) %>%
+   mutate(dif_vu=(min_vu-min_vu)/min_vu) %>%
+   mutate(dif_1=(max_1-min_1)/max_1) %>%
+  mutate(dif_2=(max_2-min_2)/max_2) %>%
+  mutate(dif_3=(max_3-min_3)/max_3) %>%
+   mutate(dif_fb_all=(max_fb_all-min_fb_all)/max_fb_all) %>%
+   mutate(dif_ru=(max_ru-min_ru)/max_ru) %>%
+   mutate(dif_budget=(max_budget-min_budget)/max_budget) %>%
+  mutate(dif_score=(max_score-min_score)/max_score) %>%
+  filter(dif_vu<0.05 & dif_1<0.05 & dif_2<0.05 & dif_3<0.05 & dif_fb_all<0.05 & dif_ru<0.05 & dif_budget<0.05 & dif_score<0.05) %>%
+   mutate(vu=round((max_vu+min_vu)/2)) %>%
+  mutate(fb_1=round((max_1+min_1)/2)) %>%
+  mutate(fb_2=round((max_2+min_2)/2)) %>%
+  mutate(fb_3=round((max_3+min_3)/2)) %>%
+   mutate(fb_all=round((max_fb_all+min_fb_all)/2)) %>%
+   mutate(ru=round((max_ru+min_ru)/2)) %>%
+   mutate(bud=round((max_budget+min_budget)/2)) %>%
+  mutate(score=round((max_score+min_score)/2),digits=1) %>%
+  select(movie_title,num_voted_users=vu,actor_1_facebook_likes=fb_1,actor_2_facebook_likes=fb_2,actor_3_facebook_likes=fb_3,cast_total_facebook_likes=fb_all,num_user_for_reviews=ru,budget=bud,imdb_score=score)
+
+#Modificamos nuestro dataset principal con los nuevos valores 
+new_movies <- select(movies, movie_title, color, director_name, director_facebook_likes, num_critic_for_reviews, duration,actor_1_name, actor_2_name, actor_3_name, gross, genres, facenumber_in_poster, plot_keywords,movie_imdb_link, language, country, content_rating, title_year, aspect_ratio, movie_facebook_likes) %>%
+   merge(numeric_var_adj, by="movie_title", all.y = TRUE)
+new_movies <- new_movies[!duplicated(new_movies), ]
+movies <- select(movies, movie_title, color, director_name, director_facebook_likes, num_critic_for_reviews, duration,actor_1_name, actor_2_name, actor_3_name, gross, genres, facenumber_in_poster, plot_keywords,movie_imdb_link, language, country, content_rating, title_year, aspect_ratio, movie_facebook_likes,num_voted_users,actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes,cast_total_facebook_likes,num_user_for_reviews, budget, imdb_score) %>%
+  filter(!movie_title %in% numeric_var_adj$movie_title) %>%
+  rbind(new_movies)
+
+#3 películas duplicadas, 
+duplicated_movies <- Duplicated_Movies()
+aux_duplicated <- Aux_Duplicated()
+var_discrepancy <- Discrepancy_Var()
+
+omited_movies <- rbind(omited_movies, c("Ben-Hur", 2016, "num_voted_users"))
+
+#Dekalog: Solo hay discrepancia en num_voted_users
+#The Lovers: Discrepancias en actor_1_facebook_likes, actor_1_facebook_likes, cast_total_facebook_likes
+
+new_dekalog <- filter(movies,grepl("Dekalog",movie_title)) %>% filter(num_voted_users>12590)
+new_thelovers <- filter(movies,grepl("The Lovers",movie_title)) %>% filter(actor_1_facebook_likes==622)
+new_thelovers$cast_total_facebook_likes=1981
+
+movies <- filter(movies, !movie_title %in% duplicated_movies$movie_title) %>%
+  rbind(new_dekalog) %>%
+  rbind(new_thelovers)
+
+#Cero películas duplicadas
+duplicated_movies <- Duplicated_Movies()
+
+# Nuestro dataset termina con 4,911 películas y 28 variables
+tibble::glimpse(movies)
+
+```
+
+#### Acerca de la Película
+**1. Movie Title:** Título de la película. 4,911 títulos diferentes.
+**2. Color:** Nos indica si la película es a Color o a Blanco y Negro. El 95% de las películas dentro del dataset son a color.
+**3. Number of Critics for Review:** Número de críticos que revisaron la película. En nuestro dataset encontramos desde ningun crítico hasta 813 criticos para la revisión de una película. El número de críticos tiene una distribución con sesgo a la derecha, cuenta con una mediana de 110 y moda de 43.
+**4. Duration:** Duración del video en minutos. Desde 7 minutos con Shaun the Sheep hasta 511 con Trapped. Con esto podemos notar que nuestra base de datos no solo incluye películas, también series, ya sea solo un capítulo o la serie completa. Shaun the Sheep se refiere a un episodío de la serie pero en el caso de Trapped se refiere a la duración de toda la serie.
+**5. Gross:** Ganancia bruta. Va desde los 162 en la película Skin Trade hasta los 760,505,847 con la película Avatar.
+**6. Genres:** Genero del video. 26 generos con 913 combinaciones de generos diferentes. El genero más popular es Drama.
+**7. Facebook Number in Poster**
+```{r include=FALSE, cache=FALSE}
+
+```
+
+
+
+
+
+#### Acerca del Director
+**1. Director Name:** Nombre del Director de la película. 
+**2. Director Facebook Likes:** Numero de likes que tiene el director en su página de Facebook.
+
+2,386 directores en el dataset. 
+El director con mayor cantidad de películas es Steven Spielberg con 26 películas.
+```{r}
+#Variable tipo factor. NA significa ausencia de dato
+movies$director_name <-  as.factor(movies$director_name)
+n_director <- length(levels(movies$director_name))
+
+#Hagamos una tabla por separado para conocer a cada director
+director_likes <- movies %>%
+  select(director_name, director_facebook_likes) %>%
+  filter(!is.na(director_name)) %>%
+  arrange(director_facebook_likes) %>%
+  arrange(director_name) %>%
+  group_by(director_name, director_facebook_likes) %>%
+  count(director_facebook_likes)
+
+
+director_likes <- director_likes[!duplicated(director_likes), ]
+
+#Recordemos que tenemos solo 2,386 pero contamos con 2,390 registros. Es decir, tenemos directores duplicados.
+director_likes_nrow <- nrow(director_likes)
+
+director_duplicated_likes <- duplicated(director_likes$director_name)
+
+director_duplicated_likes_data <- merge(director_duplicated_likes,movies, by="director_name", all.x =TRUE)
+  
+summary(movies$director_facebook_likes)
+
+ggplot(movies, aes(director_facebook_likes)) +
+  geom_density()
+
+
+
+
+
+
+```
+
+
+
+
