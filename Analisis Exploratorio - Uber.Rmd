@@ -1,0 +1,189 @@
+---
+title: "Análisis Exploratorio Univariado - Uber"
+author: "Delia Del Águila"
+output: html_notebook
+---
+
+```{r include=FALSE, cache=FALSE}
+#Primero cargaremos todas la librería necesarias para correr nuestro script
+
+list.of.packages <- c("readr", "ggplot2", "dplyr","tibble","magrittr", "outliers", "ggmap", "scales", "gridExtra", "rworldmap")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library(readr)    # Leer nuestro csv, convirtiendolo a un tibble
+library(ggplot2)  # Generar gráficas bonitas
+library(dplyr)    # Manejo de Data Frames
+library(tibble)   # Manejo de tibbles
+library(magrittr) # Uso de pipes %>%
+library(outliers) # Encontrar outliers
+library(ggmap)    # Obtener longitud y latitud
+library(scales)   # Graficas
+library(gridExtra)# Graficas
+library(rworldmap)# Mapa
+
+```
+En este documento analizaremos mil viajes de Uber obtenidos en https://www.kaggle.com/zusmani/uberdrives
+
+##Limpieza
+Nuestro dataset inicia con 1,156 observacion y 7 variables. 
+Despues del proceso de limpieza nuestro dataset termina con 1,154 observaciones y 12 variables, al agregar 5 columnas nuevas para facilitar el manejo de las fechas de inicio y fin del viaje.
+```{r include=FALSE, cache=FALSE}
+# Cargamos los datos como tibble
+original_uber <- readr::read_csv("C:/Users/Delia/Documents/ITAM/Mineria de Datos/Datasets/uber.csv") 
+uber <- original_uber
+colnames(uber) <- c("start_date","end_date","category","start_point","stop_point","miles","purpose")
+
+# Nuestro dataset inicia con 1,156 observaciones y 7 variables
+inicial_glimpse <- tibble::glimpse(uber)
+
+#Revisamos si tenemos filas duplicadas y nustro dataset queda con 1,155 observaciones
+uber <- uber[!duplicated(uber), ]
+uber_nrow <- nrow(uber)
+
+#Buscamos outliers sobre las variables numericas y los removemos, quedandonos con 1,154 observaciones.
+uber_outliers <- outlier(uber$miles)
+uber <- filter(uber, miles!=12204.7)
+
+#Busquemos Puntos de partida o de llegada con caracteres especiales y limpiemos
+special_characters <- select(uber, start_point) %>%
+ mutate(special_characters = grepl("[[:punct:]]", uber$start_point)) %>%
+  filter(special_characters==TRUE) %>%
+  group_by(start_point,special_characters) %>%
+  count(special_characters)
+
+Clean_Point <- function(x) { 
+  switch(x,
+         "R?walpindi" = "Rawalpindi",
+         "Kar?chi" = "Karachi",
+         x)
+}
+
+uber$start_point <- lapply(uber$start_point,Clean_Point)
+uber$stop_point <-  lapply(uber$stop_point, Clean_Point)
+
+tibble::glimpse(uber)
+
+#Ahora daremos varios formatos a los valores de fecha
+uber$start_date <- strptime(uber$start_date, "%m/%d/%Y %H:%M")
+uber$end_date <- strptime(uber$end_date, "%m/%d/%Y %H:%M")
+uber$start_day <- as.Date(uber$start_date)
+uber$end_day <- as.Date(uber$end_date)
+uber$start_weekday <- weekdays(uber$start_day)
+uber$start_month <- as.factor(months(uber$start_day))
+uber$trip_time_minutes <- (uber$end_date - uber$start_date)/60
+
+```
+
+### Conociendo cada Variable
+**Start Date** Fecha en la que inicio el viaje.  
+Nuestros registros abarcan desde el 1 de enero de 2016 a las 21:11hrs hasta el 31 de diciembre del mismo año a las 22:08 hrs.
+En mayo, entre el 16 y el 23 hubo una caída en la frecuencia de los viajes. Lo mismo sucede entre el 5 y el 12 de septiembre. En total se registraron mas viajes en Viernes y en Jueves.
+**End Date** Fecha en la que el viaje terminó.  
+La mayoría de los viajes no duran más de una hora.
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+summary_start_date <- summary(uber$start_date)
+
+ggplot(uber, aes(x=start_day)) + 
+  geom_freqpoly(show.legend = TRUE, colour="#1fbad6") +
+  labs(title = "Numero de viajes a lo largo del 2016",
+       x ="Fecha",
+       y= "Número de viajes") +
+  scale_x_date(breaks = date_breaks("months"),labels = date_format("%m/%d")) +
+  theme(axis.text.x = element_text(angle=90))
+
+boxplot(as.integer(uber$trip_time_minutes), ylab="Tiempo por viaje (minutos)", main="Tiempo por viaje (minutos)")
+boxplot(as.integer(uber$trip_time_minutes), ylab="Tiempo por viaje (minutos)", outline = FALSE, main="Tiempo por viaje(minutos) - Sin outliers")
+
+
+```
+**Category** Tipo de viaje, Personal o de Negocio.  
+Los viajes personales solo se registran de Febrero a Abril y durante el mes de Julio.  
+Se registran mas viajes de negocio en Viernes. 
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+ggplot(uber, aes(start_day, colour=category )) + 
+  geom_freqpoly() +
+  labs(title = "Numero de viajes a lo largo del 2016 por categoría",
+       x ="Fecha",
+       y= "Número de viajes") +
+  scale_x_date(breaks = date_breaks("months"),labels = date_format("%m/%d")) +
+  theme(axis.text.x = element_text(angle=90))
+
+ggplot(uber, aes(x=start_weekday, fill=category)) +
+  geom_bar() +
+  labs(title = "Viajes por categoría en cada día de la semana",
+       x ="Día de la semana",
+       y= "Número de viajes") +
+  scale_fill_brewer(palette="Set3")
+
+
+```
+**Purpose** Propósito del viaje.  
+Entre Junio y Noviembre el propósito del viaje es indicado en menor frecuencia. En general en los viajes personales no se indica el propósito.
+```{r}
+ggplot(uber, aes(x=start_month, fill=purpose )) + 
+  geom_bar() +
+  labs(title = "Numero de viajes a lo largo del 2016 por propósito",
+       x ="Mes",
+       y= "Número de viajes") +
+  theme(axis.text.x = element_text(angle=45))
+
+ggplot(uber, aes(x=category, fill=purpose )) + 
+  geom_bar() +
+  labs(title = "Numero de viajes a lo largo del 2016 por propósito",
+       x ="Categoría",
+       y= "Número de viajes") +
+  theme(axis.text.x = element_text(angle=45))
+
+```
+**Start Point and Stop Point**  
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+start_points <- levels(as.factor(unlist(uber$start_point)))
+stop_points <- levels(as.factor(unlist(uber$stop_point)))
+
+geo_start_point <- data.frame(matrix(0,nrow=length(start_points), ncol=3))
+for(i in 1:length(start_points)) {
+  geo_start_point[i,] <- c(start_points[i],geocode(as.character(start_points[i]), sensor = FALSE))
+}
+
+geo_stop_point <- data.frame(matrix(0,nrow=length(stop_points), ncol=3))
+for(i in 1:length(stop_points)) {
+  geo_stop_point[i,] <- c(stop_points[i],geocode(as.character(stop_points[i]), sensor = FALSE))
+}
+
+```
+La mayoría de los viajes se realizaron en Estados Unidos, pero encontramos unos cuantos en la India, Italia y otros países.
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+#Todos los Viajes
+all_trips_stop <- getMap(resolution = "low")
+plot(all_trips_stop, xlim = c(-140, 160), ylim = c(-50, 70), asp = 1) +
+points(geo_start_point$X2, geo_start_point$X3, col = "red", cex = .6, pch = "s") +
+points(geo_stop_point$X2, geo_stop_point$X3, col = "blue", cex = 3, pch = ".")
+```
+Notemos en el mapa que los puntos rojos representan el inicio de un viaje y los puntos azules representan el destino. Observemos que muchos puntos azules están sobre los rojos. Es decir que hay vaijes tanto de ida, como de regreso. 
+```{r, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+#Viajes en USA 
+usa_trips <- getMap(resolution = "low")
+plot(usa_trips, xlim = c(-140, -20), ylim = c(30, 50), asp = 1) +
+points(geo_start_point$X2, geo_start_point$X3, col = "red", cex = .6, pch = "s") +
+points(geo_stop_point$X2, geo_stop_point$X3, col = "blue", cex = 3, pch = ".") 
+```
+
+**Miles:** Millas recorridas. Como es de esperarse, esta tiene una correlación con el tiempo del viaje.
+Y vemos que los viajes mas cortos son los de camino al Aeropuero
+```{r}
+uber$trip_time_minutes <- as.numeric(uber$trip_time_minutes)
+data_cor=select(uber, Miles=miles, Time_minutes=trip_time_minutes) %>%
+  filter(!is.na(Miles) & !is.name(Time_minutes))
+cor(data_cor)  
+plot(data_cor)  
+
+ggplot(uber, aes(miles, trip_time_minutes, color=purpose)) +
+  geom_point() + 
+  theme(legend.position="bottom")
+  
+```
+
+
+

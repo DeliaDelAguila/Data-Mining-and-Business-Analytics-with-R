@@ -1,13 +1,12 @@
 ---
-title: "Análisis Exploratorío Univariado - Movies"
-output: html_notebook
+title: "Análisis Exploratorio Univariado - Películas"
+author: "Delia Del Águila"
+output: html_document
 ---
-
-En este documento analizaremos 5mil películas obtenidas de https://www.kaggle.com/tmdb/tmdb-movie-metadata
 ```{r include=FALSE, cache=FALSE}
-#Primero cargaremos todas la librería necesarias para correr nuestro script
+#Primero cargaremos todas la librerías necesarias para correr nuestro script
 
-list.of.packages <- c("readr", "ggplot2", "dplyr","tibble","magrittr", "wordcloud", "tm")
+list.of.packages <- c("readr", "ggplot2", "dplyr","tibble","magrittr", "wordcloud", "tm", "reshape")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 
@@ -17,11 +16,19 @@ library(dplyr)    # Manejo de Data Frames
 library(tibble)   # Manejo de tibbles
 library(magrittr) # Uso de pipes %>%
 library(wordcloud)# Nube de palabras
-
+library(reshape)  # Split columns
+library(lattice)  # Graficas
 ```
 
-### Conociendo nuestro dataset y Limpieza
-Nuestro dataset inicia con 5,043 observacion y 28 variables. 
+En este documento analizaremos 5mil películas obtenidas de http://www.imdb.com/,
+beses de datos de películas en Internet pos sus siglas en inglés.
+
+### Limpieza
+Nuestro dataset inicia con 5,043 registros y 28 variables. 
+A lo largo del proceso de limpieza nos enocntramos con:  
+1. Registros duplicados  
+2. Remakes, es decir una nueva versión de la película  
+3. Registros de películas duplicadas pero con valores distintos en algún campo  
 Despues del proceso de limpieza nuestro dataset termina con 4,911 películas.
 ```{r include=FALSE, cache=FALSE}
 # Cargamos los datos como tibble
@@ -196,64 +203,132 @@ tibble::glimpse(movies)
 
 ```
 
-#### Acerca de la Película
-**1. Movie Title:** Título de la película. 4,911 títulos diferentes.
-**2. Color:** Nos indica si la película es a Color o a Blanco y Negro. El 95% de las películas dentro del dataset son a color.
-**3. Number of Critics for Review:** Número de críticos que revisaron la película. En nuestro dataset encontramos desde ningun crítico hasta 813 criticos para la revisión de una película. El número de críticos tiene una distribución con sesgo a la derecha, cuenta con una mediana de 110 y moda de 43.
-**4. Duration:** Duración del video en minutos. Desde 7 minutos con Shaun the Sheep hasta 511 con Trapped. Con esto podemos notar que nuestra base de datos no solo incluye películas, también series, ya sea solo un capítulo o la serie completa. Shaun the Sheep se refiere a un episodío de la serie pero en el caso de Trapped se refiere a la duración de toda la serie.
-**5. Gross:** Ganancia bruta. Va desde los 162 en la película Skin Trade hasta los 760,505,847 con la película Avatar.
-**6. Genres:** Genero del video. 26 generos con 913 combinaciones de generos diferentes. El genero más popular es Drama.
-**7. Facebook Number in Poster**
+### Conociendo nuestro dataset
+Veamos las variables pricipales
+**Movie Title:** Título de la película. 4,911 títulos diferentes.  
 ```{r include=FALSE, cache=FALSE}
+n_movies <- length(levels(factor(movies$movie_title)))
+```
+**Color:** Nos indica si la película es a Color o a Blanco y Negro. El 95% de las películas dentro del dataset son a color.  
+**Title Year:** El año en que la película fue lanzada. Desde 1916 hasta el 2016.  
+**FB Likes:** En nuestro dataset tenemos información de facebook likes sobre la película, el director, el 1, 2 y 3 actor, y sobre el elenco completo.
+Notemos que las películas a blanco y negro no solo están presentes en los años 90, también hay registros del 2000 en adelante.  
+Además pareciera que las películas antiguas estarían en desventaja sobre los likes de Facebook, pero vemos que esto no necsariamente es así cuando hablamos de películas exitosas como Titanic.
+```{r, echo=FALSE,results='hide',fig.keep='all'}
+# COLOR: 19 películas no cuentan con este campo
+color_type <- levels(as.factor(movies$color))
+
+summ_color <- movies %>%
+  select(color) %>%
+  count(color)
+summ_color$perc <- summ_color$n / length(movies$color)
+
+barplot(table(movies$title_year,movies$color), beside=TRUE, xlab = "Año", ylab = "Número de películas", main = "Número de películas a Color y Blanco/Negro por Año")
+
+
+select(movies, title_year, movie_facebook_likes) %>%
+  group_by(title_year) %>%
+  summarise(promedio_movie_facebook_likes= mean(movie_facebook_likes)) %>%
+  arrange(title_year) %>%
+  ggplot(aes(x=title_year, y=promedio_movie_facebook_likes)) + 
+  geom_line() +
+  labs(x="Año", y="Numero promedio de likes en Facebook", title="Likes de la película en Facebook")
+
+
+```
+**Number of Critics for Review:** Número de críticos que revisaron la película. En nuestro dataset encontramos desde ningun crítico hasta 813 criticos para la revisión de una sola película.  
+**Language:** Idioma en que la película fue filmada. Los más comunes son Inglés, Español y Frances.  
+Notemos que son más los criticos para el idioma inglés.
+```{r, echo=FALSE,results='hide',fig.keep='all'}
+# NUMBER OF CRITICS FOR REVIEW: Dato tipo númerico. NA será interpretado como cero
+movies$num_critic_for_reviews[is.na(movies$num_critic_for_reviews)] <- 0
+summary_num_critic_for_reviews <- summary(movies$num_critic_for_reviews)
+
+
+movies_language <- select(movies, language) %>%  count(language) %>%  arrange(desc(n))
+
+box_plot_data <- select(movies, num_critic_for_reviews, language) %>%
+  filter(language=="English" | language=="Spanish" | language=="French")
+boxplot(num_critic_for_reviews~language, data =box_plot_data, ylab="Número de críticos que revisaron la película", main= "Número de Críticos por Idioma de la Película")
+
+```
+**Duration:** Duración del video en minutos. Desde 7 minutos con Shaun the Sheep hasta 511 minutos con Trapped. Con esto podemos notar que nuestra base de datos no solo incluye películas también incluye series, ya sea solo un capítulo o la serie completa. Shaun the Sheep se refiere a un episodío de la serie pero en el caso de Trapped se refiere a la duración de toda la serie. 
+```{r, echo=FALSE,results='hide',fig.keep='all'}
+
+# DURATION
+summary_duration <- summary(movies$duration)
+ggplot(movies, aes(duration))+
+  geom_histogram(bins=200) +
+  labs(x="Duración", y="Número de videos", title="Duración")
+
 
 ```
 
 
+**Genres:** Genero del video. 26 generos con 913 combinaciones de generos diferentes. El genero más popular es Drama.
 
+```{r, echo=FALSE,results='hide',fig.keep='all'}
+#GENRES
+movie_genres <- transform(select(movies,movie_title,genres), genre = colsplit(genres, split = "\\|", names = c('1', '2','3','4','5','6','7','8')))
+genre_1 <- levels(factor(movie_genres$genre.X1))
+genre_2 <- levels(factor(movie_genres$genre.X2))
+genre_3 <- levels(factor(movie_genres$genre.X3))
+genre_4 <- levels(factor(movie_genres$genre.X4))
+genre_5 <- levels(factor(movie_genres$genre.X5))
+genre_6 <- levels(factor(movie_genres$genre.X6))
+genre_7 <- levels(factor(movie_genres$genre.X7))
+genre_8 <- levels(factor(movie_genres$genre.X8))
+all_genres <- as.data.frame(levels(factor(union(genre_1,genre_2) %>% union(genre_3) %>% union(genre_4) %>% union(genre_5) %>%
+                              union(genre_6) %>% union(genre_7) %>% union(genre_8))))
+colnames(all_genres) <- "genre"
+all_genres_nrow <- length(levels(all_genres$genre))
+for(i in 1:all_genres_nrow){
+all_genres$n_movies[i] <- nrow(movie_genres %>% filter(grepl(all_genres$genre[i],genres)))
+}
 
+wordcloud(all_genres$genre,all_genres$n_movies,colors =  brewer.pal(12, "Paired"))
 
-#### Acerca del Director
-**1. Director Name:** Nombre del Director de la película. 
-**2. Director Facebook Likes:** Numero de likes que tiene el director en su página de Facebook.
+```
+**Country:** País.  
+**Budget:** Presupuesto.  
+Los países mas populares son USA, UK, Francia y Canada, y estos mismos son los que invierten más en sus películas.
+```{r, echo=FALSE,results='hide',fig.keep='all'}
 
-2,386 directores en el dataset. 
-El director con mayor cantidad de películas es Steven Spielberg con 26 películas.
-```{r}
-#Variable tipo factor. NA significa ausencia de dato
-movies$director_name <-  as.factor(movies$director_name)
-n_director <- length(levels(movies$director_name))
+top_countries <- select(movies, country) %>%
+  group_by(country) %>%
+  count(country) %>%
+  arrange(desc(n))
 
-#Hagamos una tabla por separado para conocer a cada director
-director_likes <- movies %>%
-  select(director_name, director_facebook_likes) %>%
-  filter(!is.na(director_name)) %>%
-  arrange(director_facebook_likes) %>%
-  arrange(director_name) %>%
-  group_by(director_name, director_facebook_likes) %>%
-  count(director_facebook_likes)
-
-
-director_likes <- director_likes[!duplicated(director_likes), ]
-
-#Recordemos que tenemos solo 2,386 pero contamos con 2,390 registros. Es decir, tenemos directores duplicados.
-director_likes_nrow <- nrow(director_likes)
-
-director_duplicated_likes <- duplicated(director_likes$director_name)
-
-director_duplicated_likes_data <- merge(director_duplicated_likes,movies, by="director_name", all.x =TRUE)
-  
-summary(movies$director_facebook_likes)
-
-ggplot(movies, aes(director_facebook_likes)) +
-  geom_density()
-
-
-
+select(movies, Country=country, budget) %>%
+  filter(Country=="USA" | Country=="UK" | Country=="France" | Country=="Canada") %>%
+  filter(!is.na(budget)) %>%
+  group_by(Country) %>%
+  dplyr::summarise(Budget_Promedio = mean(budget)) %>%
+  arrange(desc(Budget_Promedio))
 
 
 
 ```
 
+### Correlaciones
+**Gross:** Ganancia bruta.  
+Tenemos 859 registros con NA el cual refleja una ausencia de dato y no necesariamente que esa película no tuvo ganancias, como es el caso de Star Wars: Episode VII - The Force Awakens la cual ha tenido mas de 2 mil millones de dolares de ingresos.  
+Los registros de ganancia van desde los 162 en la película Skin Trade hasta los 760,505,847 con la película Avatar.
 
+```{r, echo=FALSE,results='hide',fig.keep='all'}
+#GROSS
+summary_gross <- summary(movies$gross)
+boxplot(movies$gross, horizontal=TRUE,xlab="Ganancia", main="Ganancia Bruta")
 
+```
+Notemos que la Ganacia está correlacionada con la Inversion en 0.41 y con la cantidad de FB likes que tiene la película con 0.36  
+
+```{r, echo=FALSE,fig.keep='all'}
+data_cor=select(movies,Director_FB_likes=director_facebook_likes,Gross=gross,Movie_FB_Likes=movie_facebook_likes,Budget=budget,IMDB_Score=imdb_score) %>%
+  filter(!is.na(Director_FB_likes) & !is.na(Gross) & !is.na(Movie_FB_Likes) & !is.na(Budget) & !is.na(IMDB_Score))
+
+cor(data_cor)
+plot(data_cor)
+
+```
 
