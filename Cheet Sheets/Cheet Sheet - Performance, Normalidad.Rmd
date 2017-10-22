@@ -1,0 +1,60 @@
+---
+title: "R Cheet Sheet - Performance, Normalidad"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+###TIEMPO DE DESEMPEÑO EN R
+```{r}
+ini <- Sys.time()
+fin <- Sys.time()
+print(t1<-fin-ini)
+```
+  
+###PRUEBAS DE NORMALIDAD
+  
+####1. Gráfica
+```{r, warning =FALSE, message=FALSE}
+data(father.son, package="UsingR")
+qqnorm(father.son$sheight, main="Sons", xlab="",
+         ylab="", pch=16, ylim=c(55,80)) 
+  qqline(father.son$sheight)
+```
+  
+####2. Shapiro
+```{r, warning =FALSE, message=FALSE}
+
+shapiro.test(father.son$fheight)
+```
+  
+###REGRESIÓN LINEAL
+  
+####1. Coeficientes
+```{r, warning =FALSE, message=FALSE}
+data(father.son, package="UsingR")
+m1 <- lm(sheight~fheight, father.son)
+m1
+```
+  
+####2. Gráfica Residuos
+```{r, warning =FALSE, message=FALSE}
+plot(m1)
+```
+  
+####3. Gráfica de Regresión
+```{r, warning =FALSE, message=FALSE}
+library(ggplot2)
+ggplot(father.son, aes(fheight, sheight)) + geom_point() + 
+  geom_smooth(method="lm", colour="red", se=FALSE)
+```
+  
+
+
+
+
+
+
+
+

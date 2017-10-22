@@ -1,0 +1,235 @@
+---
+title: "R Cheet Sheet - Graficas"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+###HISTOGRAMAS: Cuantitativa - Frecuencia
+
+####1.1 Histograma básico - ggplot  
+```{r, warning =FALSE, message=FALSE}
+library(ggplot2)
+ggplot(iris, aes(Petal.Length)) + 
+  geom_histogram(fill = "mediumpurple")
+```
+  
+####1.2 Histograma básico - hist  
+```{r, warning =FALSE, message=FALSE}
+library(UsingR)
+data(galton, package="UsingR")
+hist(galton$child, xlab="height (in)", main="Children", col="green")
+```
+  
+####2. Histograma de una sola sección   
+```{r, warning =FALSE, message=FALSE}
+ggplot(iris, aes(Petal.Length)) + 
+  geom_histogram() +
+  xlim(0.9,2)
+```
+  
+####3. Histograma con mediana  
+```{r, warning =FALSE, message=FALSE}
+data(father.son, package="UsingR")
+ggplot(father.son, aes(sheight)) +
+  geom_histogram(aes(y = ..density..), binwidth=1) +
+  geom_density() + xlim(58, 80) + ylim(0, 0.16) +
+  xlab("ht (inches)") + ylab("") + ggtitle("Sons")
+```
+  
+####4. Histograma con línea de densidad  
+```{r, warning =FALSE, message=FALSE}
+ggplot(galton, aes(child)) + geom_histogram(binwidth=1) +
+  xlim(60, 75) + ylim(0, 225) + ylab("") +
+  geom_vline(xintercept=median(galton$child),
+             col="red")
+```
+  
+###BARRAS: Cuantitativa - Frecuencia y Porcentage
+  
+####1. Barras básico 
+```{r, warning =FALSE, message=FALSE}
+ucba <- as.data.frame(UCBAdmissions)
+ggplot(ucba, aes(Dept)) + geom_bar(aes(weight=Freq))
+```
+  
+####2. Barras porcentage
+```{r, warning =FALSE, message=FALSE}
+library(likert)
+data("BEPS", package="effects")
+df <- with(BEPS, data.frame(Hague=factor(Hague), 
+                            Blair=factor(Blair), 
+                            Kennedy=factor(Kennedy)))
+plot(likert(df), type="bar", centered=F) 
+```
+  
+####3. Barras horzontales
+```{r, warning =FALSE, message=FALSE}
+data("BEPS", package="effects")
+ggplot(BEPS, aes(factor(political.knowledge))) + 
+      geom_bar(fill="tan2") + coord_flip() + ylab("") + 
+      xlab("Knowledge of policies on Europe")
+```
+  
+###SCATTER PLOT: Cuantitativa - Cuantitativa
+  
+####1. Scatter Plot con Color sobre un Factor
+```{r, warning =FALSE, message=FALSE}
+library(ggthemes)
+
+ggplot(iris, aes(Petal.Length, Petal.Width, color=Species)) +
+  geom_point() + 
+  theme(legend.position="bottom") + 
+  scale_colour_colorblind()
+```
+  
+####2. Scatter Plot con Color Diferido
+```{r, warning =FALSE, message=FALSE}
+library(VGAMdata)
+data(oly12, package="VGAMdata")
+
+ggplot(oly12, aes(Height, Weight, color=Age)) + geom_point() + 
+  ggtitle("Athletes at the London Olympics 2012")
+
+```
+  
+####3. Scatter Plot con Clusters
+```{r, warning =FALSE, message=FALSE}
+data(geyser, package="MASS")
+
+ggplot(geyser, aes(duration, waiting)) + geom_point() + 
+  geom_density2d()
+```
+  
+####4. Scatter Plot con Línea de Regresión
+```{r, warning =FALSE, message=FALSE}
+data(Cars93, package="MASS")
+
+ggplot(Cars93, aes(Weight, MPG.city)) + geom_point() + 
+  geom_smooth(method="lm",colour="green") + ylim(0,50)
+```
+  
+###BOX PLOT: Categórica - Cuantitativa
+  
+####1. Box Plot con Outliers  
+```{r, warning =FALSE, message=FALSE}
+library(dplyr)
+
+data(Pima.tr2, package="MASS")
+PimaV <- Pima.tr2 %>% select(glu,age)
+boxplot(scale(PimaV), pch=16, outcol="red")
+```
+  
+####2. Box Plot sin Outliers  
+```{r, warning =FALSE, message=FALSE}
+boxplot(scale(PimaV), outline=FALSE)
+```
+  
+###DENSITYT: Cuantitativa
+  
+####1. Density básico
+```{r, warning =FALSE, message=FALSE}
+plot(density(MASS::Boston$medv), ylim=c(0,0.08))
+```
+  
+####2. Density color
+```{r, warning =FALSE, message=FALSE}
+plot(likert(df), type="density", centered=F) 
+```
+  
+
+###GRAFICAS MULTIPLES
+  
+####1. Grid  
+```{r, warning =FALSE, message=FALSE}
+library(gridExtra)
+a <- ggplot(ucba, aes(Dept)) + geom_bar(aes(weight=Freq))
+b <- ggplot(ucba, aes(Gender)) + geom_bar(aes(weight=Freq))
+c <- ggplot(ucba, aes(Admit)) + geom_bar(aes(weight=Freq))
+grid.arrange(a, b, c, nrow=1, widths=c(7,3,3))
+
+```
+  
+####2. Dispersión - Density - Correlation  
+```{r, warning =FALSE, message=FALSE}
+library(GGally)
+ggpairs(PimaV, diag=list(continuous='density'),
+        axisLabels='show')
+```
+  
+####3. Dispersión - Factor
+```{r, warning =FALSE, message=FALSE}
+data(oly12, package="VGAMdata")
+oly12S <- within(oly12, Sport <- abbreviate(Sport, 12)) 
+ggplot(oly12S, aes(Height, Weight)) +
+  geom_point(size = 1) + facet_wrap(~Sport) + 
+  ggtitle("Weight and Height by Sport")
+
+```
+  
+####4. Dispersión - Línea de Tendencia
+```{r, warning =FALSE, message=FALSE}
+library(gpairs) 
+data(Leaves)
+gpairs(Leaves[1:10], lower.pars=list(scatter='loess'))
+
+```
+  
+####3. Barras 3 Factores
+```{r, warning =FALSE, message=FALSE}
+library(titanic)
+library(ggplot2)
+
+titanic <- as.data.frame(Titanic)
+ggplot(titanic, aes(Class, Freq, fill=Survived)) + 
+  geom_bar(stat = "identity", position = "fill") +
+  facet_grid(Sex ~ Age)
+```
+  
+###OTRAS
+  
+####1. Pie 
+```{r, warning =FALSE, message=FALSE}
+pie(table(iris$Species), labels = names(table(iris$Species)), 
+    main="Pie Chart of Species\n (with sample sizes)")
+```
+  
+####2. Heat Map
+```{r, warning =FALSE, message=FALSE}
+plot(likert(df), type="heat", centered=F) 
+```
+  
+####3. Paralela
+```{r, warning =FALSE, message=FALSE}
+library(GGally)
+ggparcoord(iris, columns = 1:4, groupColumn = "Species")
+
+```
+  
+####3. Mosaico
+```{r, warning =FALSE, message=FALSE}
+titanic <- as.data.frame(Titanic)
+par(mfrow=c(2,2),  mar= c(4, 4, 0.1, 0.1))
+mosaicplot(xtabs(Freq ~ Survived + Sex, data=titanic), main="")
+```
+  
+####4. Nube de Palabras
+```{r, warning =FALSE, message=FALSE}
+library(wordcloud)
+data_cloud <- select(iris,Species) %>% count(Species)
+wordcloud(data_cloud$Species,data_cloud$n,colors =  brewer.pal(12, "Paired"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

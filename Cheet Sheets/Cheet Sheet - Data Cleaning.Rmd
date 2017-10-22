@@ -1,0 +1,61 @@
+---
+title: "R Cheet Sheet - Data Cleaning"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+####1. Conocer dataset 
+```{r, results='hide'}
+class(iris)
+str(iris)
+dplyr::glimpse(iris)
+summary(iris)
+
+```
+  
+####2. Duplicados
+```{r, results='hide'}
+Fix_Duplicate <- function(x) {
+  print(paste(length(duplicated(x)[duplicated(x)==TRUE])," duplicados"))
+  x[!duplicated(x),]
+}
+```
+  
+####3. Normalizar texto
+```{r, results='hide', eval=FALSE}
+#Minusculas y quitar caracters especiales
+stringr::str_replace_all(tolower(iris$Species), "[[:punct:]]", "")
+
+#Split in Columns
+transform(select(movies,movie_title,genres), genre = reshape::colsplit(genres, split = "\\|", names = c('1', '2','3','4','5','6','7','8')))
+
+#Filter with grep
+filter(grepl("[TV]",content_rating))
+```
+  
+####4. Outliers 
+```{r, results='hide', eval=FALSE}
+boxplot.stats(iris$Sepal.Length)$out
+boxplot.stats(iris$Sepal.Length, coef = 2)$out
+```
+
+####5. Union and Join
+```{r, results='hide', eval=FALSE}
+#Inner join
+merge(df1, df2, by="common_key_column")
+
+#Outer join
+merge(df1, df2, by="common_key_column", all=TRUE)  
+
+#Left outer
+merge(df1, df2, by="common_key_column", all.x=TRUE)  
+
+#Right outer
+merge(df1, df2, by="common_key_column", all.y=TRUE)  
+
+#Union
+union(df1,df2)
+```
+
